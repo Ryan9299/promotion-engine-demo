@@ -1,0 +1,63 @@
+# ===========================
+# Maven
+# ===========================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ===========================
+# IntelliJ IDEA
+# ===========================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ===========================
+# Eclipse
+# ===========================
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# ===========================
+# VS Code
+# ===========================
+.vscode/
+
+# ===========================
+# Spring Boot 运行时
+# ===========================
+*.log
+logs/
+spring.log
+
+# ===========================
+# 敏感配置（本地环境覆盖文件）
+# ===========================
+application-local.yml
+application-local.yaml
+application-local.properties
+.env
+.env.*
+
+# ===========================
+# OS 产生的文件
+# ===========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===========================
+# 打包产物（target 已包含，这里防止根目录误放）
+# ===========================
+*.jar
+*.war
+*.ear
+*.class
