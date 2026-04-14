@@ -7,6 +7,9 @@ import com.ryan.promotion.model.entity.Activity;
 import com.ryan.promotion.model.enums.ActivityStatus;
 import com.ryan.promotion.model.enums.PromotionType;
 import com.ryan.promotion.service.ActivityManageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
  * PUT    /api/v1/activity/{id}/gray    更新灰度配置（→ GRAY）
  * </pre>
  */
+@Tag(name = "活动管理", description = "活动全生命周期 CRUD + 上下线 + 灰度")
 @Validated
 @RestController
 @RequestMapping("/api/v1/activity")
@@ -45,6 +49,7 @@ public class ActivityController {
     /**
      * 按 ID 查询活动详情。
      */
+    @Operation(summary = "查询活动详情")
     @GetMapping("/{id}")
     public Result<Activity> getById(@PathVariable Long id) {
         return Result.ok(activityManageService.getById(id));
@@ -58,12 +63,13 @@ public class ActivityController {
      * @param status 状态过滤（可选）：DRAFT / GRAY / ACTIVE / EXPIRED
      * @param type   类型过滤（可选）：FULL_REDUCTION / DISCOUNT / GIFT / MEMBER_PRICE
      */
+    @Operation(summary = "分页查询活动列表")
     @GetMapping
     public Result<IPage<Activity>> list(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) ActivityStatus status,
-            @RequestParam(required = false) PromotionType type) {
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "状态过滤") @RequestParam(required = false) ActivityStatus status,
+            @Parameter(description = "类型过滤") @RequestParam(required = false) PromotionType type) {
         return Result.ok(activityManageService.list(page, size, status, type));
     }
 
@@ -75,6 +81,7 @@ public class ActivityController {
      * 创建活动，初始状态为 DRAFT。
      * 同时写入活动规则（ruleJson 必填）。
      */
+    @Operation(summary = "创建活动", description = "初始状态为 DRAFT")
     @PostMapping
     public Result<Activity> create(@Valid @RequestBody ActivityRequest req) {
         return Result.ok(activityManageService.create(req));
@@ -87,6 +94,7 @@ public class ActivityController {
     /**
      * 更新活动基本信息（名称、规则、时间等），状态变更请使用专用端点。
      */
+    @Operation(summary = "更新活动")
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable Long id, @RequestBody ActivityRequest req) {
         activityManageService.update(id, req);
@@ -100,6 +108,7 @@ public class ActivityController {
     /**
      * 逻辑删除活动，同步清除规则和冲突配置。
      */
+    @Operation(summary = "删除活动", description = "逻辑删除")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         activityManageService.delete(id);
@@ -113,6 +122,7 @@ public class ActivityController {
     /**
      * 将活动上线（状态变更为 ACTIVE），触发全量缓存失效。
      */
+    @Operation(summary = "上线活动", description = "状态变更为 ACTIVE")
     @PutMapping("/{id}/publish")
     public Result<Void> publish(@PathVariable Long id) {
         activityManageService.publish(id);
@@ -122,6 +132,7 @@ public class ActivityController {
     /**
      * 将活动下线（状态变更为 EXPIRED），触发全量缓存失效。
      */
+    @Operation(summary = "下线活动", description = "状态变更为 EXPIRED")
     @PutMapping("/{id}/offline")
     public Result<Void> offline(@PathVariable Long id) {
         activityManageService.offline(id);
@@ -138,6 +149,7 @@ public class ActivityController {
      * }
      * }</pre>
      */
+    @Operation(summary = "设置灰度", description = "更新灰度配置，状态自动转为 GRAY")
     @PutMapping("/{id}/gray")
     public Result<Void> updateGray(@PathVariable Long id,
                                    @Valid @RequestBody UpdateGrayRequest req) {

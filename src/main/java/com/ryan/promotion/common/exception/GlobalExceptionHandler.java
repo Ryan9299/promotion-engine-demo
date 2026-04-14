@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -58,6 +59,15 @@ public class GlobalExceptionHandler {
         String message = String.format("参数 [%s] 值非法：%s", e.getName(), e.getValue());
         log.warn("参数类型异常：{}", message);
         return Result.badRequest(message);
+    }
+
+    /**
+     * 处理静态资源未找到（如 favicon.ico），返回 404 不打印堆栈。
+     */
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public Result<?> handleNoResourceFound(NoResourceFoundException e) {
+        return Result.error(404, e.getMessage());
     }
 
     /**

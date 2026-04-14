@@ -56,3 +56,16 @@ logging:
   level:
     com.ryan.promotion: DEBUG
     org.springframework.data.redis: INFO
+
+# Knife4j / OpenAPI 3
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  default-flat-param-object: true
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
