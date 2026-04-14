@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
@@ -154,7 +155,7 @@ class DiscountStrategyTest {
         BigDecimal sub = new BigDecimal(subtotal);
         return OrderContext.OrderItem.builder()
                 .skuId(skuId).quantity(qty)
-                .unitPrice(sub.divide(BigDecimal.valueOf(qty)))
+                .unitPrice(sub.divide(BigDecimal.valueOf(qty), 2, RoundingMode.HALF_UP))
                 .subtotal(sub).build();
     }
 }

@@ -1,10 +1,9 @@
-package com.ryan.promotion.integration;
+package com.ryan.promotion.chain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ryan.promotion.cache.PromotionCacheManager;
 import com.ryan.promotion.gray.GrayRuleEvaluator;
 import com.ryan.promotion.handler.*;
-import com.ryan.promotion.mapper.ActivityConflictMapper;
 import com.ryan.promotion.model.dto.CalcResult;
 import com.ryan.promotion.model.dto.OrderContext;
 import com.ryan.promotion.model.entity.Activity;
@@ -31,7 +30,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 /**
- * 端到端集成测试：一笔订单命中"会员价 + 满减 + 赠品"，折扣与满减互斥被剔除。
+ * 责任链端到端测试：手动组装 Handler 链 + Mock 缓存层，验证完整计算流程。
+ *
+ * <p>不启动 Spring 容器，仅测试 Filter → Conflict → Calc → Assemble 四个节点
+ * 串联后的业务正确性。
  *
  * <h3>场景设计</h3>
  * <pre>
@@ -60,9 +62,9 @@ import static org.mockito.Mockito.when;
  *   gifts         = [保温杯]
  * </pre>
  */
-@DisplayName("促销引擎集成测试：会员价 + 满减 + 赠品（折扣被互斥剔除）")
+@DisplayName("促销引擎责任链测试：会员价 + 满减 + 赠品（折扣被互斥剔除）")
 @ExtendWith(MockitoExtension.class)
-class PromotionIntegrationTest {
+class PromotionChainTest {
 
     // ---------------------------------------------------------------
     // Mock 依赖
@@ -70,9 +72,6 @@ class PromotionIntegrationTest {
 
     @Mock
     private PromotionCacheManager cacheManager;
-
-    @Mock
-    private ActivityConflictMapper activityConflictMapper;
 
     // ---------------------------------------------------------------
     // 责任链（真实实现）
@@ -108,7 +107,7 @@ class PromotionIntegrationTest {
 
         // 构造 Handler 实例
         filterHandler   = new ActivityFilterHandler(cacheManager, new GrayRuleEvaluator(objectMapper));
-        conflictHandler = new ConflictResolveHandler(activityConflictMapper);
+        conflictHandler = new ConflictResolveHandler(cacheManager);
         calcHandler     = new CalcHandler(List.of(
                 new MemberPriceStrategy(objectMapper),
                 new DiscountStrategy(objectMapper),
@@ -169,7 +168,7 @@ class PromotionIntegrationTest {
                 ID_GIFT,           giftRule));
 
         // FULL_REDUCTION EXCLUSIVE DISCOUNT
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(
                         conflict(ID_FULL_REDUCTION, ID_DISCOUNT, ConflictRelation.EXCLUSIVE)));
 
@@ -209,7 +208,7 @@ class PromotionIntegrationTest {
                 ID_DISCOUNT,       discountRule,
                 ID_MEMBER_PRICE,   memberPriceRule,
                 ID_GIFT,           giftRule));
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(
                         conflict(ID_FULL_REDUCTION, ID_DISCOUNT, ConflictRelation.EXCLUSIVE)));
 
@@ -244,7 +243,7 @@ class PromotionIntegrationTest {
 
     private Activity activity(long id, PromotionType type, int priority) {
         return Activity.builder()
-                .id(id).name(type.getDesc() + "活动").type(type)
+                .id(id).storeId(101L).name(type.getDesc() + "活动").type(type)
                 .status(ActivityStatus.ACTIVE).priority(priority)
                 .build();
     }
@@ -260,7 +259,7 @@ class PromotionIntegrationTest {
 
     private OrderContext order(BigDecimal amount, String memberLevel) {
         return OrderContext.builder()
-                .orderId("ORD-INTEGRATION-001").storeId(101L).memberId(888L)
+                .orderId("ORD-CHAIN-001").storeId(101L).memberId(888L)
                 .memberLevel(memberLevel).totalAmount(amount)
                 .items(List.of(
                         OrderContext.OrderItem.builder()

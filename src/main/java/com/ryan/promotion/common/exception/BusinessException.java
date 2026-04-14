@@ -22,7 +22,7 @@ public class BusinessException extends RuntimeException {
 
     /** 活动规则 JSON 解析失败 */
     public static BusinessException ruleParseError(long activityId, Throwable cause) {
-        throw new BusinessException(4001,
+        return new BusinessException(4001,
                 "活动[" + activityId + "]规则JSON解析失败: " + cause.getMessage());
     }
 

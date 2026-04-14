@@ -42,9 +42,14 @@ public class RedisConfig {
         // 独立配置 Redis 专用 ObjectMapper，开启多态类型信息存储
         ObjectMapper redisObjectMapper = new ObjectMapper();
         redisObjectMapper.registerModule(new JavaTimeModule());
+        // 收窄反序列化白名单：仅允许项目内部类和 JDK 常用类型，
+        // 防止 Jackson gadget chain 反序列化攻击（CVE-2017-7525 等）
         redisObjectMapper.activateDefaultTyping(
                 BasicPolymorphicTypeValidator.builder()
-                        .allowIfBaseType(Object.class)
+                        .allowIfSubType("com.ryan.promotion.")
+                        .allowIfSubType("java.util.")
+                        .allowIfSubType("java.time.")
+                        .allowIfSubType("java.math.")
                         .build(),
                 ObjectMapper.DefaultTyping.NON_FINAL,
                 JsonTypeInfo.As.PROPERTY

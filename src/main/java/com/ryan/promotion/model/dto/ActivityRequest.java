@@ -23,6 +23,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class ActivityRequest {
 
+    /** 所属门店 ID */
+    @NotNull(message = "门店ID不能为空")
+    private Long storeId;
+
     /** 活动名称 */
     @NotBlank(message = "活动名称不能为空")
     private String name;

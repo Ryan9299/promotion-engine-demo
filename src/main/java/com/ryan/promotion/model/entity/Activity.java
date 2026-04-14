@@ -25,6 +25,9 @@ public class Activity {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    /** 所属门店 ID，活动按门店维度隔离 */
+    private Long storeId;
+
     /** 活动名称 */
     private String name;
 
