@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("activity_rule")
+@TableName("t_promo_activity_rule")
 public class ActivityRule {
 
     /** 主键，雪花算法生成 */

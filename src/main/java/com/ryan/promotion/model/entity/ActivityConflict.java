@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("activity_conflict")
+@TableName("t_promo_activity_conflict")
 public class ActivityConflict {
 
     /** 主键，雪花算法生成 */

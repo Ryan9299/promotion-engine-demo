@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("activity")
+@TableName("t_promo_activity")
 public class Activity {
 
     /** 主键，雪花算法生成 */
