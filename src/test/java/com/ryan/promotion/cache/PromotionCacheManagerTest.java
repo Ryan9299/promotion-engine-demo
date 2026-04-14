@@ -1,5 +1,8 @@
 package com.ryan.promotion.cache;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.ryan.promotion.mapper.ActivityConflictMapper;
 import com.ryan.promotion.mapper.ActivityMapper;
 import com.ryan.promotion.mapper.ActivityRuleMapper;
 import com.ryan.promotion.model.entity.Activity;
@@ -12,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
@@ -29,13 +31,13 @@ import static org.mockito.Mockito.*;
 /**
  * PromotionCacheManager 单元测试（纯 Mockito，不启动 Spring 容器）。
  * 覆盖：L1 命中、L1 穿透 L2 命中、L1+L2 双穿透回源 DB、缓存失效后重新加载。
+ *
+ * <p>L2 层改为 StringRedisTemplate + 显式 TypeReference，
+ * 测试中使用真实 ObjectMapper 做序列化/反序列化。
  */
 @DisplayName("PromotionCacheManager 缓存测试")
 @ExtendWith(MockitoExtension.class)
 class PromotionCacheManagerTest {
-
-    @Mock
-    private RedisTemplate<String, Object> redisTemplate;
 
     @Mock
     private StringRedisTemplate stringRedisTemplate;
@@ -50,7 +52,12 @@ class PromotionCacheManagerTest {
     private ActivityRuleMapper activityRuleMapper;
 
     @Mock
-    private ValueOperations<String, Object> valueOps;
+    private ActivityConflictMapper activityConflictMapper;
+
+    @Mock
+    private ValueOperations<String, String> stringValueOps;
+
+    private ObjectMapper objectMapper;
 
     private PromotionCacheManager cacheManager;
 
@@ -58,11 +65,15 @@ class PromotionCacheManagerTest {
 
     @BeforeEach
     void setUp() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+
+        when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOps);
 
         cacheManager = new PromotionCacheManager(
-                redisTemplate, stringRedisTemplate, listenerContainer,
-                activityMapper, activityRuleMapper);
+                stringRedisTemplate, listenerContainer,
+                activityMapper, activityRuleMapper, activityConflictMapper,
+                objectMapper);
         // 手动触发 @PostConstruct（测试环境不启动 Spring）
         cacheManager.init();
     }
@@ -75,7 +86,7 @@ class PromotionCacheManagerTest {
     @DisplayName("L1 命中：第一次加载后第二次直接返回 Caffeine 缓存，DB 仅调用一次")
     void getActivities_l1Hit_dbCalledOnlyOnce() {
         Activity activity = sampleActivity(1001L);
-        when(valueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 miss
+        when(stringValueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 miss
         when(activityMapper.selectActiveActivities(eq(STORE_ID), any()))
                 .thenReturn(List.of(activity));
 
@@ -95,15 +106,17 @@ class PromotionCacheManagerTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("L1 miss + L2 命中：从 Redis 返回结果，不查 DB")
-    void getActivities_l1MissL2Hit_dbNotCalled() {
+    @DisplayName("L1 miss + L2 命中：从 Redis 返回 JSON 字符串反序列化，不查 DB")
+    void getActivities_l1MissL2Hit_dbNotCalled() throws Exception {
         List<Activity> cached = List.of(sampleActivity(1001L));
-        // Redis 返回非 null（L2 命中）
-        when(valueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(cached);
+        // Redis 返回 JSON 字符串（L2 命中）
+        String json = objectMapper.writeValueAsString(cached);
+        when(stringValueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(json);
 
         List<Activity> result = cacheManager.getActivities(STORE_ID);
 
         assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(1001L);
         verify(activityMapper, never()).selectActiveActivities(any(), any());
     }
 
@@ -112,19 +125,19 @@ class PromotionCacheManagerTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("L1+L2 双穿透：查 DB 并将结果回填 Redis L2")
+    @DisplayName("L1+L2 双穿透：查 DB 并将结果以 JSON 字符串回填 Redis L2")
     void getActivities_bothMiss_dbCalledAndResultCachedToRedis() {
         Activity activity = sampleActivity(1001L);
-        when(valueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 miss
+        when(stringValueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 miss
         when(activityMapper.selectActiveActivities(eq(STORE_ID), any()))
                 .thenReturn(List.of(activity));
 
         List<Activity> result = cacheManager.getActivities(STORE_ID);
 
         assertThat(result).hasSize(1);
-        // 回填 Redis
-        verify(valueOps, times(1))
-                .set(eq(KEY_ACTIVITIES + STORE_ID), eq(List.of(activity)), anyLong(), any());
+        // 回填 Redis（以 JSON 字符串形式）
+        verify(stringValueOps, times(1))
+                .set(eq(KEY_ACTIVITIES + STORE_ID), anyString(), anyLong(), any());
     }
 
     // ------------------------------------------------------------------
@@ -135,7 +148,7 @@ class PromotionCacheManagerTest {
     @DisplayName("invalidate 后再次 getActivities：L1 被驱逐，重新穿透到 DB")
     void getActivities_afterInvalidate_dbCalledAgain() {
         Activity activity = sampleActivity(1001L);
-        when(valueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 always miss
+        when(stringValueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null); // L2 always miss
         when(activityMapper.selectActiveActivities(eq(STORE_ID), any()))
                 .thenReturn(List.of(activity));
 
@@ -153,18 +166,18 @@ class PromotionCacheManagerTest {
     }
 
     @Test
-    @DisplayName("getRules - L1+L2 双穿透：查活动列表再查规则，结果回填 Redis")
+    @DisplayName("getRules - L1+L2 双穿透：查活动列表再查规则，结果以 JSON 回填 Redis")
     void getRules_bothMiss_queriesDbAndCachesToRedis() {
         Activity activity = sampleActivity(1001L);
         ActivityRule rule = ActivityRule.builder()
                 .id(1L).activityId(1001L).ruleJson("{\"discountRate\":0.9}").build();
 
         // activities L2 miss → DB
-        when(valueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null);
+        when(stringValueOps.get(KEY_ACTIVITIES + STORE_ID)).thenReturn(null);
         when(activityMapper.selectActiveActivities(eq(STORE_ID), any()))
                 .thenReturn(List.of(activity));
         // rules L2 miss → DB
-        when(valueOps.get(KEY_RULES + STORE_ID)).thenReturn(null);
+        when(stringValueOps.get(KEY_RULES + STORE_ID)).thenReturn(null);
         when(activityRuleMapper.selectByActivityIds(anyList()))
                 .thenReturn(List.of(rule));
 
@@ -172,9 +185,9 @@ class PromotionCacheManagerTest {
 
         assertThat(ruleMap).containsKey(1001L);
         verify(activityRuleMapper, times(1)).selectByActivityIds(anyList());
-        // 规则结果也写入 Redis
-        verify(valueOps, times(1))
-                .set(eq(KEY_RULES + STORE_ID), any(), anyLong(), any());
+        // 规则结果也写入 Redis（JSON 字符串）
+        verify(stringValueOps, times(1))
+                .set(eq(KEY_RULES + STORE_ID), anyString(), anyLong(), any());
     }
 
     // ------------------------------------------------------------------
@@ -183,7 +196,7 @@ class PromotionCacheManagerTest {
 
     private Activity sampleActivity(long id) {
         return Activity.builder()
-                .id(id).name("测试活动-" + id)
+                .id(id).storeId(STORE_ID).name("测试活动-" + id)
                 .type(PromotionType.MEMBER_PRICE)
                 .status(ActivityStatus.ACTIVE).priority(10)
                 .startTime(LocalDateTime.now().minusDays(1))

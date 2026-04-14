@@ -28,7 +28,11 @@ public enum PromotionType {
     private final String desc;
 
     /**
-     * 根据 code 查找枚举，找不到返回 null。
+     * 根据 code 查找枚举，找不到时抛出 IllegalArgumentException。
+     *
+     * @param code 活动类型编码
+     * @return 对应的枚举值
+     * @throws IllegalArgumentException code 不合法时抛出
      */
     public static PromotionType of(String code) {
         for (PromotionType t : values()) {
@@ -36,6 +40,6 @@ public enum PromotionType {
                 return t;
             }
         }
-        return null;
+        throw new IllegalArgumentException("未知的活动类型编码：" + code);
     }
 }

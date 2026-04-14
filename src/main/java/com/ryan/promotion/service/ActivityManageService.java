@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.ryan.promotion.cache.PromotionCacheManager;
+import com.ryan.promotion.cache.CacheInvalidateEvent;
 import com.ryan.promotion.common.exception.BusinessException;
 import com.ryan.promotion.mapper.ActivityConflictMapper;
 import com.ryan.promotion.mapper.ActivityMapper;
@@ -17,6 +17,7 @@ import com.ryan.promotion.model.enums.ActivityStatus;
 import com.ryan.promotion.model.enums.PromotionType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -31,11 +32,9 @@ import org.springframework.util.StringUtils;
  *   ACTIVE / GRAY → EXPIRED（offline）
  * </pre>
  *
- * <p>凡涉及活动数据变更的操作，均在 DB 写入后调用 {@link PromotionCacheManager#invalidateAll()}
- * 清除全量两级缓存，确保下次读取时从 DB 获取最新数据。
- *
- * <p>注意：缓存失效在事务提交前触发，存在极短的脏读窗口（单机场景下可接受；
- * 生产环境可通过 {@code @TransactionalEventListener(AFTER_COMMIT)} 彻底规避）。
+ * <p>凡涉及活动数据变更的操作，均通过发布 {@link CacheInvalidateEvent} 事件，
+ * 由 {@link com.ryan.promotion.cache.CacheInvalidateListener} 在事务提交后清除全量两级缓存，
+ * 确保 DB 变更落地后才失效缓存，避免事务回滚导致的缓存不一致。
  */
 @Slf4j
 @Service
@@ -45,7 +44,7 @@ public class ActivityManageService {
     private final ActivityMapper activityMapper;
     private final ActivityRuleMapper activityRuleMapper;
     private final ActivityConflictMapper activityConflictMapper;
-    private final PromotionCacheManager cacheManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ---------------------------------------------------------------
     // 查询
@@ -97,6 +96,7 @@ public class ActivityManageService {
     @Transactional(rollbackFor = Exception.class)
     public Activity create(ActivityRequest req) {
         Activity activity = Activity.builder()
+                .storeId(req.getStoreId())
                 .name(req.getName())
                 .type(req.getType())
                 .status(ActivityStatus.DRAFT)
@@ -153,7 +153,7 @@ public class ActivityManageService {
                             .set(ActivityRule::getRuleJson, req.getRuleJson()));
         }
 
-        cacheManager.invalidateAll();
+        eventPublisher.publishEvent(CacheInvalidateEvent.all(this));
         log.info("活动更新成功：id={}", id);
     }
 
@@ -183,7 +183,7 @@ public class ActivityManageService {
                         .or()
                         .eq(ActivityConflict::getActivityIdB, id));
 
-        cacheManager.invalidateAll();
+        eventPublisher.publishEvent(CacheInvalidateEvent.all(this));
         log.info("活动删除成功：id={}", id);
     }
 
@@ -197,6 +197,7 @@ public class ActivityManageService {
      *
      * @param id 活动 ID
      */
+    @Transactional(rollbackFor = Exception.class)
     public void publish(Long id) {
         Activity activity = getById(id);
         if (activity.getStatus() == ActivityStatus.ACTIVE) {
@@ -207,7 +208,7 @@ public class ActivityManageService {
                 new LambdaUpdateWrapper<Activity>()
                         .eq(Activity::getId, id)
                         .set(Activity::getStatus, ActivityStatus.ACTIVE));
-        cacheManager.invalidateAll();
+        eventPublisher.publishEvent(CacheInvalidateEvent.all(this));
         log.info("活动上线成功：id={}", id);
     }
 
@@ -216,13 +217,14 @@ public class ActivityManageService {
      *
      * @param id 活动 ID
      */
+    @Transactional(rollbackFor = Exception.class)
     public void offline(Long id) {
         getById(id);
         activityMapper.update(null,
                 new LambdaUpdateWrapper<Activity>()
                         .eq(Activity::getId, id)
                         .set(Activity::getStatus, ActivityStatus.EXPIRED));
-        cacheManager.invalidateAll();
+        eventPublisher.publishEvent(CacheInvalidateEvent.all(this));
         log.info("活动下线成功：id={}", id);
     }
 
@@ -233,6 +235,7 @@ public class ActivityManageService {
      * @param id         活动 ID
      * @param grayConfig 灰度配置 JSON
      */
+    @Transactional(rollbackFor = Exception.class)
     public void updateGray(Long id, String grayConfig) {
         getById(id);
         activityMapper.update(null,
@@ -240,7 +243,7 @@ public class ActivityManageService {
                         .eq(Activity::getId, id)
                         .set(Activity::getStatus, ActivityStatus.GRAY)
                         .set(Activity::getGrayConfig, grayConfig));
-        cacheManager.invalidateAll();
+        eventPublisher.publishEvent(CacheInvalidateEvent.all(this));
         log.info("灰度配置更新成功：id={}", id);
     }
 }

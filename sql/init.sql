@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS t_promo_activity;
 CREATE TABLE t_promo_activity
 (
     id          BIGINT       NOT NULL COMMENT '主键（雪花算法）',
+    store_id    BIGINT       NOT NULL COMMENT '所属门店ID，活动按门店维度隔离',
     name        VARCHAR(128) NOT NULL COMMENT '活动名称',
     type        VARCHAR(32)  NOT NULL COMMENT '活动类型：FULL_REDUCTION/DISCOUNT/GIFT/MEMBER_PRICE',
     status      VARCHAR(16)  NOT NULL DEFAULT 'DRAFT' COMMENT '状态：DRAFT/GRAY/ACTIVE/EXPIRED',
@@ -28,7 +29,7 @@ CREATE TABLE t_promo_activity
     update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除：0=正常 1=已删除',
     PRIMARY KEY (id),
-    INDEX idx_status_time (status, start_time, end_time),
+    INDEX idx_store_status_time (store_id, status, start_time, end_time),
     INDEX idx_type (type)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
@@ -79,8 +80,8 @@ CREATE TABLE t_promo_activity_conflict
 -- ============================================================
 
 -- 活动1：会员等级价（MEMBER_PRICE）—— 金卡及以上享9折会员价
-INSERT INTO t_promo_activity (id, name, type, status, priority, gray_config, start_time, end_time)
-VALUES (1001, '金卡会员专属价', 'MEMBER_PRICE', 'ACTIVE', 10, NULL,
+INSERT INTO t_promo_activity (id, store_id, name, type, status, priority, gray_config, start_time, end_time)
+VALUES (1001, 101, '金卡会员专属价', 'MEMBER_PRICE', 'ACTIVE', 10, NULL,
         '2026-01-01 00:00:00', '2026-12-31 23:59:59');
 
 INSERT INTO t_promo_activity_rule (id, activity_id, rule_json)
@@ -88,8 +89,8 @@ VALUES (2001, 1001,
         '{"memberLevels": ["GOLD", "PLATINUM", "DIAMOND"], "discountRate": 0.90}');
 
 -- 活动2：折扣（DISCOUNT）—— 全场8.8折
-INSERT INTO t_promo_activity (id, name, type, status, priority, gray_config, start_time, end_time)
-VALUES (1002, '全场8.8折优惠', 'DISCOUNT', 'ACTIVE', 20, NULL,
+INSERT INTO t_promo_activity (id, store_id, name, type, status, priority, gray_config, start_time, end_time)
+VALUES (1002, 101, '全场8.8折优惠', 'DISCOUNT', 'ACTIVE', 20, NULL,
         '2026-04-01 00:00:00', '2026-04-30 23:59:59');
 
 INSERT INTO t_promo_activity_rule (id, activity_id, rule_json)
@@ -97,8 +98,8 @@ VALUES (2002, 1002,
         '{"discountRate": 0.88, "minOrderAmount": 0}');
 
 -- 活动3：满减（FULL_REDUCTION）—— 满200减30
-INSERT INTO t_promo_activity (id, name, type, status, priority, gray_config, start_time, end_time)
-VALUES (1003, '满200减30', 'FULL_REDUCTION', 'ACTIVE', 30, NULL,
+INSERT INTO t_promo_activity (id, store_id, name, type, status, priority, gray_config, start_time, end_time)
+VALUES (1003, 101, '满200减30', 'FULL_REDUCTION', 'ACTIVE', 30, NULL,
         '2026-04-01 00:00:00', '2026-04-30 23:59:59');
 
 INSERT INTO t_promo_activity_rule (id, activity_id, rule_json)
@@ -106,8 +107,8 @@ VALUES (2003, 1003,
         '{"tiers": [{"threshold": 200, "reduction": 30}, {"threshold": 500, "reduction": 100}]}');
 
 -- 活动4：赠品（GIFT）—— 购满150送定制保温杯
-INSERT INTO t_promo_activity (id, name, type, status, priority, gray_config, start_time, end_time)
-VALUES (1004, '满150送保温杯', 'GIFT', 'ACTIVE', 5,
+INSERT INTO t_promo_activity (id, store_id, name, type, status, priority, gray_config, start_time, end_time)
+VALUES (1004, 101, '满150送保温杯', 'GIFT', 'ACTIVE', 5,
         '{"storeIds": [101, 102, 103], "trafficPercent": 100}',
         '2026-04-01 00:00:00', '2026-04-30 23:59:59');
 
@@ -116,8 +117,8 @@ VALUES (2004, 1004,
         '{"minOrderAmount": 150, "gifts": [{"giftSkuId": "SKU_CUP_001", "giftSkuName": "定制保温杯", "giftQuantity": 1, "marketPrice": 49.90}]}');
 
 -- 活动5：满减（FULL_REDUCTION）—— 大促专属满300减80（与活动3互斥）
-INSERT INTO t_promo_activity (id, name, type, status, priority, gray_config, start_time, end_time)
-VALUES (1005, '大促满300减80', 'FULL_REDUCTION', 'ACTIVE', 40,
+INSERT INTO t_promo_activity (id, store_id, name, type, status, priority, gray_config, start_time, end_time)
+VALUES (1005, 101, '大促满300减80', 'FULL_REDUCTION', 'ACTIVE', 40,
         '{"trafficPercent": 50}',
         '2026-04-10 00:00:00', '2026-04-20 23:59:59');
 

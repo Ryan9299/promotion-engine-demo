@@ -1,6 +1,6 @@
 package com.ryan.promotion.handler;
 
-import com.ryan.promotion.mapper.ActivityConflictMapper;
+import com.ryan.promotion.cache.PromotionCacheManager;
 import com.ryan.promotion.model.entity.Activity;
 import com.ryan.promotion.model.entity.ActivityConflict;
 import com.ryan.promotion.model.enums.ConflictRelation;
@@ -9,7 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 责任链第2步：互斥冲突解决处理器。
@@ -30,7 +29,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ConflictResolveHandler extends PromotionHandler {
 
-    private final ActivityConflictMapper activityConflictMapper;
+    private final PromotionCacheManager cacheManager;
 
     /**
      * 执行互斥冲突解决，填充 resolvedActivities，然后传递给下一节点。
@@ -47,7 +46,7 @@ public class ConflictResolveHandler extends PromotionHandler {
         }
 
         // 构建互斥关系邻接表：key=activityId, value=与其互斥的所有活动ID集合
-        Map<Long, Set<Long>> exclusiveMap = buildExclusiveMap(matched);
+        Map<Long, Set<Long>> exclusiveMap = buildExclusiveMap(context);
 
         // 贪心选择：matchedActivities 已按优先级降序排列
         List<Activity> resolved = new ArrayList<>();
@@ -73,12 +72,12 @@ public class ConflictResolveHandler extends PromotionHandler {
     // ---------------------------------------------------------------
 
     /**
-     * 查询活动集合内的互斥关系，构建双向邻接表。
+     * 从缓存获取活动冲突关系，构建双向邻接表。
      * 若两个活动存在 EXCLUSIVE 关系，双向均写入 map，方便 O(1) 查询。
      */
-    private Map<Long, Set<Long>> buildExclusiveMap(List<Activity> activities) {
-        List<Long> ids = activities.stream().map(Activity::getId).collect(Collectors.toList());
-        List<ActivityConflict> conflicts = activityConflictMapper.selectConflictsByActivityIds(ids);
+    private Map<Long, Set<Long>> buildExclusiveMap(PromotionContext context) {
+        Long storeId = context.getOrderContext().getStoreId();
+        List<ActivityConflict> conflicts = cacheManager.getConflicts(storeId);
 
         Map<Long, Set<Long>> exclusiveMap = new HashMap<>();
         for (ActivityConflict conflict : conflicts) {

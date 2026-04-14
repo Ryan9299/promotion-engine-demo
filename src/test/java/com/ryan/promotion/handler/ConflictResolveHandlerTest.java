@@ -1,6 +1,7 @@
 package com.ryan.promotion.handler;
 
-import com.ryan.promotion.mapper.ActivityConflictMapper;
+import com.ryan.promotion.cache.PromotionCacheManager;
+import com.ryan.promotion.model.dto.OrderContext;
 import com.ryan.promotion.model.entity.Activity;
 import com.ryan.promotion.model.entity.ActivityConflict;
 import com.ryan.promotion.model.enums.ActivityStatus;
@@ -18,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 /**
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 class ConflictResolveHandlerTest {
 
     @Mock
-    private ActivityConflictMapper activityConflictMapper;
+    private PromotionCacheManager cacheManager;
 
     @InjectMocks
     private ConflictResolveHandler handler;
@@ -53,7 +53,7 @@ class ConflictResolveHandlerTest {
         Activity a3 = activity(1003L, PromotionType.FULL_REDUCTION, 30);
 
         // 无任何冲突记录
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of());
 
         PromotionContext ctx = contextWith(List.of(a3, a2, a1)); // 按优先级降序
@@ -74,7 +74,7 @@ class ConflictResolveHandlerTest {
         Activity a = activity(1003L, PromotionType.FULL_REDUCTION, 30);
         Activity b = activity(1005L, PromotionType.DISCOUNT,       20);
 
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(conflict(1003L, 1005L, ConflictRelation.EXCLUSIVE)));
 
         PromotionContext ctx = contextWith(List.of(a, b)); // a 优先级更高
@@ -92,7 +92,7 @@ class ConflictResolveHandlerTest {
         Activity b = activity(1002L, PromotionType.DISCOUNT,       20);
         Activity c = activity(1003L, PromotionType.MEMBER_PRICE,   10);
 
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(
                         conflict(1001L, 1002L, ConflictRelation.EXCLUSIVE),
                         conflict(1001L, 1003L, ConflictRelation.EXCLUSIVE)
@@ -118,7 +118,7 @@ class ConflictResolveHandlerTest {
         Activity c = activity(1003L, PromotionType.MEMBER_PRICE,   10);
 
         // A 与 B 互斥，A 与 C 无冲突
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(
                         conflict(1001L, 1002L, ConflictRelation.EXCLUSIVE)
                 ));
@@ -140,7 +140,7 @@ class ConflictResolveHandlerTest {
         Activity a = activity(1001L, PromotionType.FULL_REDUCTION, 30);
         Activity b = activity(1002L, PromotionType.DISCOUNT,       20);
 
-        when(activityConflictMapper.selectConflictsByActivityIds(anyList()))
+        when(cacheManager.getConflicts(101L))
                 .thenReturn(List.of(conflict(1001L, 1002L, ConflictRelation.COMPATIBLE)));
 
         PromotionContext ctx = contextWith(List.of(a, b));
@@ -157,7 +157,7 @@ class ConflictResolveHandlerTest {
 
     private Activity activity(long id, PromotionType type, int priority) {
         return Activity.builder()
-                .id(id).name("活动-" + id).type(type)
+                .id(id).storeId(101L).name("活动-" + id).type(type)
                 .status(ActivityStatus.ACTIVE).priority(priority)
                 .build();
     }
@@ -169,6 +169,16 @@ class ConflictResolveHandlerTest {
     }
 
     private PromotionContext contextWith(List<Activity> matched) {
-        return PromotionContext.builder().matchedActivities(matched).build();
+        OrderContext orderContext = OrderContext.builder()
+                .orderId("TEST").storeId(101L).totalAmount(java.math.BigDecimal.ONE)
+                .items(List.of(OrderContext.OrderItem.builder()
+                        .skuId("SKU001").quantity(1)
+                        .unitPrice(java.math.BigDecimal.ONE)
+                        .subtotal(java.math.BigDecimal.ONE).build()))
+                .build();
+        return PromotionContext.builder()
+                .orderContext(orderContext)
+                .matchedActivities(matched)
+                .build();
     }
 }
